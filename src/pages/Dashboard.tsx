@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Search, Navigation, Shield, Users, LogOut, MapPin, Loader2, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { useJourney } from '@/contexts/JourneyContext';
 import { useToast } from '@/hooks/use-toast';
@@ -258,8 +259,5 @@ const Dashboard: React.FC = () => {
     </div>
   );
 };
-
-// Need to import Label
-import { Label } from '@/components/ui/label';
 
 export default Dashboard;
