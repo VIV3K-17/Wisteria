@@ -1,11 +1,25 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 
 const JourneyContext = createContext(null);
+const JOURNEY_HISTORY_KEY = 'safety_journey_history';
 
 export const useJourney = () => {
   const ctx = useContext(JourneyContext);
   if (!ctx) throw new Error('useJourney must be used within JourneyProvider');
   return ctx;
+};
+
+const readStoredHistory = () => {
+  try {
+    const stored = localStorage.getItem(JOURNEY_HISTORY_KEY);
+    if (!stored) return [];
+
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.error('Failed to read journey history:', err);
+    return [];
+  }
 };
 
 // Calculate distance between two lat/lng points in meters
@@ -51,9 +65,32 @@ export const JourneyProvider = ({
   const [missedCheckpoint, setMissedCheckpoint] = useState(null);
   const [alertTriggered, setAlertTriggered] = useState(false);
   const [currentPath, setCurrentPath] = useState([]);
+  const [journeyHistory, setJourneyHistory] = useState(() => readStoredHistory());
   
   const timerRef = useRef();
   const safetyTimeoutRef = useRef();
+
+  useEffect(() => {
+    localStorage.setItem(JOURNEY_HISTORY_KEY, JSON.stringify(journeyHistory));
+  }, [journeyHistory]);
+
+  const addJourneyToHistory = useCallback((completedJourney) => {
+    if (!completedJourney) return;
+
+    const reachedCount = completedJourney.checkpoints.filter(cp => cp.reached).length;
+    const historyEntry = {
+      id: completedJourney.id,
+      source: completedJourney.source,
+      destination: completedJourney.destination,
+      startedAt: completedJourney.startedAt,
+      endedAt: Date.now(),
+      checkpointCount: completedJourney.checkpoints.length,
+      reachedCount,
+      status: reachedCount === completedJourney.checkpoints.length ? 'completed' : 'ended'
+    };
+
+    setJourneyHistory(prev => [historyEntry, ...prev].slice(0, 20));
+  }, []);
 
   const startJourney = useCallback((source, destination) => {
     const checkpoints = generateCheckpoints(source, destination);
@@ -109,13 +146,16 @@ export const JourneyProvider = ({
   }, []);
 
   const endJourney = useCallback(() => {
-    setJourney(null);
+    setJourney(prev => {
+      addJourneyToHistory(prev);
+      return null;
+    });
     setCurrentPath([]);
     setMissedCheckpoint(null);
     setAlertTriggered(false);
     if (timerRef.current) clearInterval(timerRef.current);
     if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
-  }, []);
+  }, [addJourneyToHistory]);
 
   const confirmSafety = useCallback(() => {
     setMissedCheckpoint(null);
@@ -136,6 +176,7 @@ export const JourneyProvider = ({
 
   const clearMissedCheckpoint = useCallback(() => setMissedCheckpoint(null), []);
   const clearAlert = useCallback(() => setAlertTriggered(false), []);
+  const clearJourneyHistory = useCallback(() => setJourneyHistory([]), []);
 
   // Check for missed deadlines
   useEffect(() => {
@@ -164,6 +205,7 @@ export const JourneyProvider = ({
   return <JourneyContext.Provider value={{
     journey,
     currentPath,
+    journeyHistory,
     startJourney,
     updatePosition,
     endJourney,
@@ -171,7 +213,8 @@ export const JourneyProvider = ({
     clearMissedCheckpoint,
     confirmSafety,
     alertTriggered,
-    clearAlert
+    clearAlert,
+    clearJourneyHistory
   }}>
       {children}
     </JourneyContext.Provider>;

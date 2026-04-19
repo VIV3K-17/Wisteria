@@ -58,7 +58,7 @@ const MapView = ({ userPosition, destination, className = '' }) => {
   }
 
   return (
-    <div className={`rounded-2xl overflow-hidden soft-shadow ${className} border border-border/50`} style={{ height: '100%', minHeight: '350px' }}>
+    <div className={`relative isolate h-full w-full rounded-2xl overflow-hidden soft-shadow ${className} border border-border/50`}>
       <MapContainer center={center} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false}>
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
