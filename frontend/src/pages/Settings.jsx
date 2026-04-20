@@ -339,7 +339,7 @@ const Settings = () => {
             <Button
               variant="outline"
               onClick={() => setShowContactDialog(false)}
-              className="border-white/20 text-white hover:bg-white/10"
+              className="border-white/20 bg-white/90 text-slate-900 hover:bg-white"
             >
               Cancel
             </Button>
@@ -367,12 +367,12 @@ const Settings = () => {
             <div className="flex justify-center">
               <InputOTP maxLength={6} value={otp} onChange={setOtp}>
                 <InputOTPGroup>
-                  <InputOTPSlot index={0} />
-                  <InputOTPSlot index={1} />
-                  <InputOTPSlot index={2} />
-                  <InputOTPSlot index={3} />
-                  <InputOTPSlot index={4} />
-                  <InputOTPSlot index={5} />
+                  <InputOTPSlot index={0} className="bg-slate-800 border-slate-500 text-white text-lg font-semibold" />
+                  <InputOTPSlot index={1} className="bg-slate-800 border-slate-500 text-white text-lg font-semibold" />
+                  <InputOTPSlot index={2} className="bg-slate-800 border-slate-500 text-white text-lg font-semibold" />
+                  <InputOTPSlot index={3} className="bg-slate-800 border-slate-500 text-white text-lg font-semibold" />
+                  <InputOTPSlot index={4} className="bg-slate-800 border-slate-500 text-white text-lg font-semibold" />
+                  <InputOTPSlot index={5} className="bg-slate-800 border-slate-500 text-white text-lg font-semibold" />
                 </InputOTPGroup>
               </InputOTP>
             </div>
@@ -393,7 +393,7 @@ const Settings = () => {
                 setShowOTPDialog(false);
                 setOtp('');
               }}
-              className="border-white/20 text-white hover:bg-white/10"
+              className="border-white/20 bg-white/90 text-slate-900 hover:bg-white"
             >
               Cancel
             </Button>

@@ -45,6 +45,25 @@ function RecenterMap({ position }) {
   return null;
 }
 
+function FitRouteBounds({ route, isActive }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!isActive || !route) return;
+    
+    const coordinates = route.geometry?.coordinates;
+    if (!coordinates || coordinates.length === 0) return;
+
+    // Convert [lng, lat] to [lat, lng] for Leaflet
+    const leafletBounds = coordinates.map(coord => [coord[1], coord[0]]);
+    
+    // Fit bounds with some padding
+    const latLngs = L.latLngBounds(leafletBounds);
+    map.fitBounds(latLngs, { padding: [50, 50], animate: true });
+  }, [route, map, isActive]);
+  
+  return null;
+}
+
 function MapClickHandler({ onMapClick, canSelectDestination }) {
   useMapEvents({
     click: (e) => {
@@ -85,6 +104,11 @@ const MapView = ({ userPosition, destination, className = '', isPreviewMode = fa
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
         <MapClickHandler onMapClick={onDestinationSelect} canSelectDestination={!journey?.active} />
+
+        {/* Fit bounds to show the entire route in preview mode */}
+        {isPreviewMode && routeData?.primaryRoute && (
+          <FitRouteBounds route={routeData.primaryRoute} isActive={true} />
+        )}
 
         {/* User Location */}
         {userPosition && (

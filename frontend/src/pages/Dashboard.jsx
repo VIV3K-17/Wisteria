@@ -27,7 +27,7 @@ import EmergencyContacts from '@/components/EmergencyContacts';
 import DashboardNav from '@/components/DashboardNav';
 import JourneyHistoryPanel from '@/components/JourneyHistoryPanel';
 import EmergencyPanel from '@/components/EmergencyPanel';
-import { getRoute } from '@/lib/mapbox';
+import { getRoute, searchLocations } from '@/lib/mapbox';
 
 const DESTINATIONS = [{
   name: 'Mumbai Central',
@@ -91,6 +91,8 @@ const Dashboard = () => {
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [routeData, setRouteData] = useState(null);
   const [isFetchingRoute, setIsFetchingRoute] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
 
   const filteredDests = DESTINATIONS.filter(d => d.name.toLowerCase().includes(searchQuery.toLowerCase()));
   const parsedLatLngDest = parseLatLngQuery(searchQuery);
@@ -119,6 +121,25 @@ const Dashboard = () => {
     }
     return () => watchId && navigator.geolocation.clearWatch(watchId);
   }, [journey?.active, updatePosition, user?._id]);
+
+  useEffect(() => {
+    const query = String(searchQuery || '').trim();
+
+    if (!showSuggestions || query.length < 3) {
+      setIsSearching(false);
+      setSearchResults([]);
+      return;
+    }
+
+    const timeoutId = setTimeout(async () => {
+      setIsSearching(true);
+      const results = await searchLocations(query, userPos, 6);
+      setSearchResults(results);
+      setIsSearching(false);
+    }, 350);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, showSuggestions, userPos]);
 
   // Handle destination selection from search
   const handleDestinationSelect = (dest) => {
@@ -153,16 +174,28 @@ const Dashboard = () => {
     await fetchRoute(customDest);
   };
 
-  // Fetch route from Mapbox
+  // Fetch route from OpenRouteService
   const fetchRoute = async (destination) => {
     if (!userPos) return;
     
     setIsFetchingRoute(true);
-    setIsPreviewMode(true);
+    setIsPreviewMode(false);
+    setRouteData(null);
     
     try {
       const route = await getRoute(userPos, destination);
+
+      if (!route?.success || !route?.primaryRoute?.geometry) {
+        toast({
+          title: 'Route unavailable',
+          description: route?.message || 'No drivable route found for this destination.',
+          variant: 'destructive'
+        });
+        return;
+      }
+
       setRouteData(route);
+      setIsPreviewMode(true);
     } catch (err) {
       console.error('Failed to fetch route:', err);
       toast({
@@ -282,7 +315,7 @@ const Dashboard = () => {
                     </div>
 
                     {!isPreviewMode && (
-                      <div className="glass-card rounded-2xl p-4 soft-shadow relative">
+                      <div className="glass-card rounded-2xl p-4 soft-shadow relative z-40">
                         <Label className="text-xs text-muted-foreground mb-2 block">Where are you going?</Label>
                         <div className="relative">
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -307,7 +340,7 @@ const Dashboard = () => {
                         </p>
 
                         {showSuggestions && searchQuery && (
-                          <div className="absolute left-4 right-4 top-full mt-1 bg-card rounded-xl border border-border soft-shadow z-20 max-h-48 overflow-y-auto">
+                          <div className="absolute left-4 right-4 top-full mt-1 bg-card rounded-xl border border-border soft-shadow z-[60] max-h-56 overflow-y-auto">
                             {parsedLatLngDest && (
                               <button onClick={() => handleDestinationSelect(parsedLatLngDest)} className="w-full flex items-center gap-2 p-3 hover:bg-muted/50 text-left border-b border-border/50">
                                 <MapPin className="w-4 h-4 text-destructive shrink-0" />
@@ -315,18 +348,30 @@ const Dashboard = () => {
                               </button>
                             )}
 
-                            {filteredDests.length === 0 && !parsedLatLngDest ? <p className="p-3 text-sm text-muted-foreground">No results</p> : filteredDests.map(dest => (
+                            {filteredDests.map(dest => (
                               <button key={dest.name} onClick={() => handleDestinationSelect(dest)} className="w-full flex items-center gap-2 p-3 hover:bg-muted/50 text-left">
                                 <MapPin className="w-4 h-4 text-primary shrink-0" />
                                 <span className="text-sm">{dest.name}</span>
                               </button>
                             ))}
+
+                            {searchResults.map(dest => (
+                              <button key={`${dest.name}-${dest.lat}-${dest.lng}`} onClick={() => handleDestinationSelect(dest)} className="w-full flex items-center gap-2 p-3 hover:bg-muted/50 text-left">
+                                <MapPin className="w-4 h-4 text-primary shrink-0" />
+                                <span className="text-sm">{dest.name}</span>
+                              </button>
+                            ))}
+
+                            {isSearching && <p className="p-3 text-sm text-muted-foreground">Searching places...</p>}
+                            {!isSearching && filteredDests.length === 0 && searchResults.length === 0 && !parsedLatLngDest && (
+                              <p className="p-3 text-sm text-muted-foreground">No results</p>
+                            )}
                           </div>
                         )}
                       </div>
                     )}
 
-                    {isPreviewMode && routeData && (
+                    {isPreviewMode && routeData?.primaryRoute && (
                       <RoutePreviewCard
                         route={routeData}
                         destination={selectedDest}

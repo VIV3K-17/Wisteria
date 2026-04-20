@@ -43,17 +43,17 @@ function getDistance(lat1, lon1, lat2, lon2) {
 }
 
 // Generate checkpoints using Turf.js along a route or linear path
-function generateCheckpoints(source, destination, routeGeometry = null) {
+function generateCheckpoints(source, destination, routeGeometry = null, routeDurationSeconds = null) {
   const count = 3;
   const checkpoints = [];
 
   let points = [];
+  let routeDistanceMeters = 0;
 
   if (routeGeometry && routeGeometry.coordinates && routeGeometry.coordinates.length > 0) {
-    // Use actual route geometry from Mapbox
+    // Use actual route geometry from routing response
     try {
       const line = lineString(routeGeometry.coordinates);
-      const totalDistance = 0;
 
       // Calculate total distance
       let currentDistance = 0;
@@ -62,6 +62,7 @@ function generateCheckpoints(source, destination, routeGeometry = null) {
         const [lon2, lat2] = routeGeometry.coordinates[i + 1];
         currentDistance += getDistance(lat1, lon1, lat2, lon2);
       }
+      routeDistanceMeters = currentDistance;
 
       // Generate evenly spaced checkpoints along the route
       const segmentDistance = currentDistance / (count + 1);
@@ -91,6 +92,7 @@ function generateCheckpoints(source, destination, routeGeometry = null) {
   // Fallback: linear interpolation if route geometry not available
   if (!points || points.length === 0) {
     points = [];
+    routeDistanceMeters = getDistance(source.lat, source.lng, destination.lat, destination.lng);
     for (let i = 1; i <= count; i++) {
       const ratio = i / (count + 1);
       points.push({
@@ -100,6 +102,19 @@ function generateCheckpoints(source, destination, routeGeometry = null) {
     }
   }
 
+  // Prefer route duration when available, else estimate from distance at ~40 km/h.
+  const durationFromRoute = Number(routeDurationSeconds);
+  const hasRouteDuration = Number.isFinite(durationFromRoute) && durationFromRoute > 0;
+  const estimatedDuration = routeDistanceMeters > 0 ? routeDistanceMeters / 11.11 : 1800;
+  const baseDuration = hasRouteDuration ? durationFromRoute : estimatedDuration;
+
+  // Add a safety buffer so deadlines are realistic for traffic/pauses.
+  const bufferedTotal = Math.max(baseDuration * 1.3, 20 * 60);
+  const checkpointDeadlines = Array.from({ length: count }, (_, idx) => {
+    const ratio = (idx + 1) / (count + 1);
+    return Math.round(bufferedTotal * ratio);
+  });
+
   // Create checkpoint objects
   points.forEach((point, idx) => {
     checkpoints.push({
@@ -107,7 +122,7 @@ function generateCheckpoints(source, destination, routeGeometry = null) {
       lat: point.lat,
       lng: point.lng,
       name: `Checkpoint ${idx + 1}`,
-      timeLimit: 300 + ((idx + 1) * 300), // Incremental time limits
+      timeLimit: checkpointDeadlines[idx],
       reached: false
     });
   });
@@ -151,7 +166,12 @@ export const JourneyProvider = ({
   }, []);
 
   const startJourney = useCallback(async (source, destination, routeData = null, userId = null) => {
-    const checkpoints = generateCheckpoints(source, destination, routeData?.primaryRoute?.geometry);
+    const checkpoints = generateCheckpoints(
+      source,
+      destination,
+      routeData?.primaryRoute?.geometry,
+      routeData?.primaryRoute?.duration
+    );
     const now = Date.now();
 
     // Set deadlines

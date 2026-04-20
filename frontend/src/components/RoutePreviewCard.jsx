@@ -59,13 +59,6 @@ const RoutePreviewCard = ({ route, destination, onStart, onCancel, isLoading = f
         </div>
       )}
 
-      {/* Data Source */}
-      {!route.isReal && (
-        <div className="text-xs text-amber-600 bg-amber-500/10 rounded p-2 mb-4 border border-amber-500/20">
-          Using estimated route (Mapbox API not configured)
-        </div>
-      )}
-
       {/* Start Button */}
       <Button
         onClick={onStart}
