@@ -90,8 +90,10 @@ const Signup = () => {
     if (result.success) {
       toast({
         title: 'Account created!',
-        description: 'Welcome to SafeTravel'
+        description: 'Now let\'s set up your emergency contacts'
       });
+      // Route to settings to enforce emergency contact setup
+      setTimeout(() => navigate('/settings'), 1500);
     } else {
       toast({
         title: 'Signup failed',

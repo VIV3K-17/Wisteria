@@ -13,20 +13,12 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const {
-    login,
-    isAuthenticated
+    login
   } = useAuth();
   const navigate = useNavigate();
   const {
     toast
   } = useToast();
-
-  React.useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/dashboard', { replace: true });
-    }
-  }, [isAuthenticated, navigate]);
-
   const handleSubmit = async e => {
     e.preventDefault();
     if (!email || !password) {
@@ -37,17 +29,19 @@ const Login = () => {
       return;
     }
     setLoading(true);
-    const success = await login(email, password);
+    const result = await login(email, password);
     setLoading(false);
-    if (success) {
+    if (result.success) {
       toast({
         title: 'Welcome back!',
         description: 'Login successful'
       });
+
+      navigate('/dashboard', { replace: true });
     } else {
       toast({
         title: 'Invalid credentials',
-        description: 'Please check your email and password',
+        description: result.error || 'Please check your email and password',
         variant: 'destructive'
       });
     }

@@ -19,12 +19,15 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useJourney } from '@/contexts/JourneyContext';
 import { useToast } from '@/hooks/use-toast';
 import MapView from '@/components/MapView';
+import RoutePreviewCard from '@/components/RoutePreviewCard';
+import AlertSystem from '@/components/AlertSystem';
 import JourneyPanel from '@/components/JourneyPanel';
 import SafetyAlert from '@/components/SafetyAlert';
 import EmergencyContacts from '@/components/EmergencyContacts';
 import DashboardNav from '@/components/DashboardNav';
 import JourneyHistoryPanel from '@/components/JourneyHistoryPanel';
 import EmergencyPanel from '@/components/EmergencyPanel';
+import { getRoute } from '@/lib/mapbox';
 
 const DESTINATIONS = [{
   name: 'Mumbai Central',
@@ -48,6 +51,22 @@ const DESTINATIONS = [{
   lng: 78.4747
 }];
 
+const parseLatLngQuery = (query) => {
+  const match = String(query || '').trim().match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+  if (!match) return null;
+
+  const lat = Number(match[1]);
+  const lng = Number(match[2]);
+  if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+
+  return {
+    name: `Custom (${lat.toFixed(5)}, ${lng.toFixed(5)})`,
+    lat,
+    lng
+  };
+};
+
 const Dashboard = () => {
   const { user, logout } = useAuth();
   const { journey, startJourney, updatePosition, journeyHistory } = useJourney();
@@ -69,8 +88,12 @@ const Dashboard = () => {
   const [selectedDest, setSelectedDest] = useState(null);
   const [showContacts, setShowContacts] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
+  const [routeData, setRouteData] = useState(null);
+  const [isFetchingRoute, setIsFetchingRoute] = useState(false);
 
   const filteredDests = DESTINATIONS.filter(d => d.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  const parsedLatLngDest = parseLatLngQuery(searchQuery);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -83,7 +106,7 @@ const Dashboard = () => {
       watchId = navigator.geolocation.watchPosition(pos => {
         const newPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setUserPos(newPos);
-        if (journey?.active) updatePosition(newPos);
+        if (journey?.active) updatePosition(newPos, user?._id);
         setLocationLoading(false);
       }, () => {
         setLocationLoading(false);
@@ -95,13 +118,101 @@ const Dashboard = () => {
       setUserPos({ lat: 19.0760, lng: 72.8777 });
     }
     return () => watchId && navigator.geolocation.clearWatch(watchId);
-  }, [journey?.active, updatePosition]);
+  }, [journey?.active, updatePosition, user?._id]);
 
-  const handleStartJourney = useCallback(() => {
+  // Handle destination selection from search
+  const handleDestinationSelect = (dest) => {
+    if (!userPos) {
+      toast({
+        title: 'Error',
+        description: 'Waiting for location...',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setSelectedDest(dest);
+    setSearchQuery(dest.name);
+    setShowSuggestions(false);
+    fetchRoute(dest);
+  };
+
+  // Handle map click for custom destination
+  const handleMapClick = async (coords) => {
+    if (!userPos) return;
+    
+    const customDest = {
+      name: `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`,
+      lat: coords.lat,
+      lng: coords.lng
+    };
+    
+    setSelectedDest(customDest);
+    setSearchQuery(customDest.name);
+    setShowSuggestions(false);
+    await fetchRoute(customDest);
+  };
+
+  // Fetch route from Mapbox
+  const fetchRoute = async (destination) => {
+    if (!userPos) return;
+    
+    setIsFetchingRoute(true);
+    setIsPreviewMode(true);
+    
+    try {
+      const route = await getRoute(userPos, destination);
+      setRouteData(route);
+    } catch (err) {
+      console.error('Failed to fetch route:', err);
+      toast({
+        title: 'Error',
+        description: 'Could not fetch route data',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsFetchingRoute(false);
+    }
+  };
+
+  const handleStartJourney = useCallback(async () => {
+    // Enforce emergency contacts check
+    if (!user?.emergencyContacts || user.emergencyContacts.length === 0) {
+      toast({
+        title: 'Setup Required',
+        description: 'Please add at least one emergency contact before starting a journey',
+        variant: 'destructive'
+      });
+      navigate('/settings');
+      return;
+    }
+
+    if (!user?.emergencyEmail) {
+      toast({
+        title: 'Setup Required',
+        description: 'Please set an emergency email before starting a journey',
+        variant: 'destructive'
+      });
+      navigate('/settings');
+      return;
+    }
+
     if (!userPos || !selectedDest) return;
-    startJourney({ ...userPos, name: 'Current Location' }, selectedDest);
+    
+    await startJourney({ ...userPos, name: 'Current Location' }, selectedDest, routeData, user?._id);
+    setIsPreviewMode(false);
+    setRouteData(null);
+    setSelectedDest(null);
+    setSearchQuery('');
     toast({ title: '🚀 Journey Started!', description: `Heading to ${selectedDest.name}` });
-  }, [userPos, selectedDest, startJourney, toast]);
+  }, [userPos, selectedDest, startJourney, toast, user, navigate, routeData]);
+
+  const handleCancelPreview = () => {
+    setIsPreviewMode(false);
+    setRouteData(null);
+    setSelectedDest(null);
+    setSearchQuery('');
+  };
 
   const handleLogout = () => {
     logout();
@@ -170,28 +281,60 @@ const Dashboard = () => {
                       </div>
                     </div>
 
-                    <div className="glass-card rounded-2xl p-4 soft-shadow relative">
-                      <Label className="text-xs text-muted-foreground mb-2 block">Where are you going?</Label>
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input placeholder="Search destination..." value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setShowSuggestions(true); }} className="pl-10 rounded-xl" />
-                      </div>
-
-                      {showSuggestions && searchQuery && (
-                        <div className="absolute left-4 right-4 top-full mt-1 bg-card rounded-xl border border-border soft-shadow z-20 max-h-48 overflow-y-auto">
-                          {filteredDests.length === 0 ? <p className="p-3 text-sm text-muted-foreground">No results</p> : filteredDests.map(dest => (
-                            <button key={dest.name} onClick={() => { setSelectedDest(dest); setSearchQuery(dest.name); setShowSuggestions(false); }} className="w-full flex items-center gap-2 p-3 hover:bg-muted/50 text-left">
-                              <MapPin className="w-4 h-4 text-primary shrink-0" />
-                              <span className="text-sm">{dest.name}</span>
-                            </button>
-                          ))}
+                    {!isPreviewMode && (
+                      <div className="glass-card rounded-2xl p-4 soft-shadow relative">
+                        <Label className="text-xs text-muted-foreground mb-2 block">Where are you going?</Label>
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Search or enter lat,lng (e.g. 12.9716,77.5946)"
+                            value={searchQuery}
+                            onChange={e => {
+                              setSearchQuery(e.target.value);
+                              setShowSuggestions(true);
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter' && parsedLatLngDest) {
+                                e.preventDefault();
+                                handleDestinationSelect(parsedLatLngDest);
+                              }
+                            }}
+                            className="pl-10 rounded-xl"
+                          />
                         </div>
-                      )}
-                    </div>
+                        <p className="mt-2 text-[11px] text-muted-foreground">
+                          Tip: click any point on the map to drop a destination pin.
+                        </p>
 
-                    <Button onClick={handleStartJourney} disabled={!selectedDest || !userPos} className="w-full gradient-primary rounded-2xl h-14 font-semibold text-base">
-                      <Play className="w-5 h-5 mr-2" /> Start Journey
-                    </Button>
+                        {showSuggestions && searchQuery && (
+                          <div className="absolute left-4 right-4 top-full mt-1 bg-card rounded-xl border border-border soft-shadow z-20 max-h-48 overflow-y-auto">
+                            {parsedLatLngDest && (
+                              <button onClick={() => handleDestinationSelect(parsedLatLngDest)} className="w-full flex items-center gap-2 p-3 hover:bg-muted/50 text-left border-b border-border/50">
+                                <MapPin className="w-4 h-4 text-destructive shrink-0" />
+                                <span className="text-sm">Use coordinates: {parsedLatLngDest.lat.toFixed(5)}, {parsedLatLngDest.lng.toFixed(5)}</span>
+                              </button>
+                            )}
+
+                            {filteredDests.length === 0 && !parsedLatLngDest ? <p className="p-3 text-sm text-muted-foreground">No results</p> : filteredDests.map(dest => (
+                              <button key={dest.name} onClick={() => handleDestinationSelect(dest)} className="w-full flex items-center gap-2 p-3 hover:bg-muted/50 text-left">
+                                <MapPin className="w-4 h-4 text-primary shrink-0" />
+                                <span className="text-sm">{dest.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {isPreviewMode && routeData && (
+                      <RoutePreviewCard
+                        route={routeData}
+                        destination={selectedDest}
+                        onStart={handleStartJourney}
+                        onCancel={handleCancelPreview}
+                        isLoading={isFetchingRoute}
+                      />
+                    )}
                   </motion.div>
                 )}
 
@@ -210,7 +353,14 @@ const Dashboard = () => {
 
               <div className="glass-card rounded-2xl p-3 soft-shadow">
                 <div className="h-[320px] sm:h-[380px] lg:h-[560px] overflow-hidden rounded-2xl">
-                  <MapView userPosition={userPos} destination={selectedDest} className="h-full" />
+                  <MapView
+                    userPosition={userPos}
+                    destination={isPreviewMode ? selectedDest : null}
+                    className="h-full"
+                    isPreviewMode={isPreviewMode}
+                    routeData={routeData}
+                    onDestinationSelect={handleMapClick}
+                  />
                 </div>
               </div>
             </div>
@@ -233,6 +383,7 @@ const Dashboard = () => {
           )}
         </main>
 
+        <AlertSystem userPosition={userPos} />
         <SafetyAlert />
         <EmergencyContacts open={showContacts} onClose={() => setShowContacts(false)} />
       </div>

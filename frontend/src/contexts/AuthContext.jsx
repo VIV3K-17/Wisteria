@@ -31,6 +31,13 @@ export const useAuth = () => {
   return ctx;
 };
 
+const hasEmergencySetup = (user) => {
+  if (!user) return false;
+  const hasContacts = Array.isArray(user.emergencyContacts) && user.emergencyContacts.length > 0;
+  const hasEmergencyEmail = Boolean(String(user.emergencyEmail || '').trim());
+  return hasContacts && hasEmergencyEmail;
+};
+
 export const AuthProvider = ({
   children
 }) => {
@@ -88,12 +95,20 @@ export const AuthProvider = ({
   const login = useCallback(async (email, password) => {
     try {
       const res = await axios.post(`${API_URL}/auth/login`, { email, password });
-      setUser(res.data);
+      const loggedInUser = res.data;
+      setUser(loggedInUser);
       setSessionExpiresAt(Date.now() + SESSION_TTL_MS);
-      return true;
+      return {
+        success: true,
+        user: loggedInUser,
+        requiresEmergencySetup: !hasEmergencySetup(loggedInUser)
+      };
     } catch (err) {
       console.error(err);
-      return false;
+      return {
+        success: false,
+        error: err?.response?.data?.message || 'Login failed'
+      };
     }
   }, []);
 
@@ -136,16 +151,75 @@ export const AuthProvider = ({
     }
   }, [user]);
 
+  const requestEmergencyContactsOTP = useCallback(async () => {
+    if (!user?._id) {
+      return {
+        success: false,
+        error: 'User information missing'
+      };
+    }
+
+    try {
+      const res = await axios.post(`${API_URL}/user/${user._id}/contacts/otp/send`);
+      return { success: true, data: res.data };
+    } catch (err) {
+      console.error(err);
+      return {
+        success: false,
+        error: err?.response?.data?.message || 'Failed to send OTP'
+      };
+    }
+  }, [user]);
+
+  const verifyEmergencyContactsOTP = useCallback(async ({ otp, contacts, emergencyEmail }) => {
+    if (!user?._id) {
+      return {
+        success: false,
+        error: 'User information missing'
+      };
+    }
+
+    try {
+      const res = await axios.post(`${API_URL}/user/${user._id}/contacts/otp/verify`, {
+        otp,
+        contacts,
+        emergencyEmail
+      });
+
+      setUser(prev => ({
+        ...prev,
+        emergencyContacts: res.data?.emergencyContacts || contacts || prev?.emergencyContacts || [],
+        emergencyEmail: emergencyEmail || prev?.emergencyEmail || ''
+      }));
+
+      return { success: true, data: res.data };
+    } catch (err) {
+      console.error(err);
+      return {
+        success: false,
+        error: err?.response?.data?.message || 'OTP verification failed'
+      };
+    }
+  }, [user]);
+
+  const updateEmergencyContacts = useCallback(async ({ otp, contacts, emergencyEmail }) => {
+    return verifyEmergencyContactsOTP({ otp, contacts, emergencyEmail });
+  }, [verifyEmergencyContactsOTP]);
+
   return <AuthContext.Provider value={{
     user,
     isAuthenticated: !!user,
+    requiresEmergencySetup: !!user && !hasEmergencySetup(user),
     sessionExpiresAt,
     sendEmailOTP,
     login,
     signup,
     logout,
     addEmergencyContact,
-    removeEmergencyContact
+    removeEmergencyContact,
+    requestEmergencyContactsOTP,
+    verifyEmergencyContactsOTP,
+    updateEmergencyContacts
   }}>
       {children}
     </AuthContext.Provider>;

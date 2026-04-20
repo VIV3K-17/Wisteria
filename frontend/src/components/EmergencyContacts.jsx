@@ -21,7 +21,7 @@ const EmergencyContacts = ({
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [relationship, setRelationship] = useState('');
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!name.trim() || !phone.trim()) {
       toast({
         title: 'Please fill name and phone',
@@ -36,11 +36,20 @@ const EmergencyContacts = ({
       });
       return;
     }
-    addEmergencyContact({
+    const saved = await addEmergencyContact({
       name: name.trim(),
       phone: phone.trim(),
       relationship: relationship.trim() || 'Other'
     });
+    if (!saved) {
+      toast({
+        title: 'Could not save contact',
+        description: 'Please try again with valid details',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     setName('');
     setPhone('');
     setRelationship('');

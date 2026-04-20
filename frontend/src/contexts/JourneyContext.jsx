@@ -1,7 +1,11 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import axios from 'axios';
+import along from '@turf/along';
+import { lineString } from '@turf/helpers';
 
 const JourneyContext = createContext(null);
 const JOURNEY_HISTORY_KEY = 'safety_journey_history';
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000/api';
 
 export const useJourney = () => {
   const ctx = useContext(JourneyContext);
@@ -38,23 +42,76 @@ function getDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-function generateCheckpoints(source, destination) {
-  const count = 3; 
+// Generate checkpoints using Turf.js along a route or linear path
+function generateCheckpoints(source, destination, routeGeometry = null) {
+  const count = 3;
   const checkpoints = [];
-  for (let i = 1; i <= count; i++) {
-    const ratio = i / (count + 1);
-    // Add some noise to the linear path
-    const lat = source.lat + (destination.lat - source.lat) * ratio + (Math.random() - 0.5) * 0.002;
-    const lng = source.lng + (destination.lng - source.lng) * ratio + (Math.random() - 0.5) * 0.002;
+
+  let points = [];
+
+  if (routeGeometry && routeGeometry.coordinates && routeGeometry.coordinates.length > 0) {
+    // Use actual route geometry from Mapbox
+    try {
+      const line = lineString(routeGeometry.coordinates);
+      const totalDistance = 0;
+
+      // Calculate total distance
+      let currentDistance = 0;
+      for (let i = 0; i < routeGeometry.coordinates.length - 1; i++) {
+        const [lon1, lat1] = routeGeometry.coordinates[i];
+        const [lon2, lat2] = routeGeometry.coordinates[i + 1];
+        currentDistance += getDistance(lat1, lon1, lat2, lon2);
+      }
+
+      // Generate evenly spaced checkpoints along the route
+      const segmentDistance = currentDistance / (count + 1);
+
+      for (let i = 1; i <= count; i++) {
+        const distanceToPoint = segmentDistance * i;
+        try {
+          const point = along(line, distanceToPoint / 1000); // Turf uses kilometers
+          if (point && point.geometry && point.geometry.coordinates) {
+            points.push({
+              lat: point.geometry.coordinates[1],
+              lng: point.geometry.coordinates[0]
+            });
+          }
+        } catch (err) {
+          console.log('Turf checkpoint generation skipped, using fallback');
+          points = null;
+          break;
+        }
+      }
+    } catch (err) {
+      console.log('Route-based checkpoint generation failed, using fallback');
+      points = null;
+    }
+  }
+
+  // Fallback: linear interpolation if route geometry not available
+  if (!points || points.length === 0) {
+    points = [];
+    for (let i = 1; i <= count; i++) {
+      const ratio = i / (count + 1);
+      points.push({
+        lat: source.lat + (destination.lat - source.lat) * ratio + (Math.random() - 0.5) * 0.002,
+        lng: source.lng + (destination.lng - source.lng) * ratio + (Math.random() - 0.5) * 0.002
+      });
+    }
+  }
+
+  // Create checkpoint objects
+  points.forEach((point, idx) => {
     checkpoints.push({
       id: crypto.randomUUID(),
-      lat,
-      lng,
-      name: `Checkpoint ${i}`,
-      timeLimit: 300 + (i * 300), // Incremental time limits (5, 10, 15... mins)
+      lat: point.lat,
+      lng: point.lng,
+      name: `Checkpoint ${idx + 1}`,
+      timeLimit: 300 + ((idx + 1) * 300), // Incremental time limits
       reached: false
     });
-  }
+  });
+
   return checkpoints;
 }
 
@@ -63,6 +120,7 @@ export const JourneyProvider = ({
 }) => {
   const [journey, setJourney] = useState(null);
   const [missedCheckpoint, setMissedCheckpoint] = useState(null);
+  const [missedCheckpoints, setMissedCheckpoints] = useState(0);
   const [alertTriggered, setAlertTriggered] = useState(false);
   const [currentPath, setCurrentPath] = useState([]);
   const [journeyHistory, setJourneyHistory] = useState(() => readStoredHistory());
@@ -92,8 +150,8 @@ export const JourneyProvider = ({
     setJourneyHistory(prev => [historyEntry, ...prev].slice(0, 20));
   }, []);
 
-  const startJourney = useCallback((source, destination) => {
-    const checkpoints = generateCheckpoints(source, destination);
+  const startJourney = useCallback(async (source, destination, routeData = null, userId = null) => {
+    const checkpoints = generateCheckpoints(source, destination, routeData?.primaryRoute?.geometry);
     const now = Date.now();
 
     // Set deadlines
@@ -101,7 +159,7 @@ export const JourneyProvider = ({
       cp.deadline = now + cp.timeLimit * 1000;
     });
 
-    setJourney({
+    const nextJourney = {
       id: crypto.randomUUID(),
       source,
       destination,
@@ -109,13 +167,32 @@ export const JourneyProvider = ({
       startedAt: now,
       active: true,
       currentCheckpointIndex: 0
-    });
+    };
+
+    setJourney(nextJourney);
     setCurrentPath([[source.lat, source.lng]]);
     setMissedCheckpoint(null);
+    setMissedCheckpoints(0);
     setAlertTriggered(false);
+
+    if (userId) {
+      try {
+        await axios.post(`${API_URL}/journey/start`, {
+          userId,
+          journeyId: nextJourney.id,
+          source,
+          destination,
+          checkpoints: nextJourney.checkpoints
+        });
+      } catch (err) {
+        console.error('Failed to create journey on server:', err);
+      }
+    }
   }, []);
 
-  const updatePosition = useCallback((pos) => {
+  const updatePosition = useCallback(async (pos, userId = null) => {
+    const activeJourneyId = journey?.id;
+
     setCurrentPath(prev => {
       const last = prev[prev.length - 1];
       if (last && last[0] === pos.lat && last[1] === pos.lng) return prev;
@@ -143,7 +220,19 @@ export const JourneyProvider = ({
       }
       return prev;
     });
-  }, []);
+
+    if (userId && activeJourneyId) {
+      try {
+        await axios.post(`${API_URL}/journey/update-position`, {
+          userId,
+          journeyId: activeJourneyId,
+          position: pos
+        });
+      } catch (err) {
+        console.error('Failed to sync position to server:', err);
+      }
+    }
+  }, [journey?.id]);
 
   const endJourney = useCallback(() => {
     setJourney(prev => {
@@ -152,6 +241,7 @@ export const JourneyProvider = ({
     });
     setCurrentPath([]);
     setMissedCheckpoint(null);
+    setMissedCheckpoints(0);
     setAlertTriggered(false);
     if (timerRef.current) clearInterval(timerRef.current);
     if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
@@ -189,6 +279,7 @@ export const JourneyProvider = ({
       if (current && !current.reached && current.deadline && now > current.deadline) {
         if (!missedCheckpoint) {
           setMissedCheckpoint(current);
+          setMissedCheckpoints(prev => prev + 1);
           // Give 60 seconds to confirm safety before alerting contacts
           safetyTimeoutRef.current = setTimeout(() => {
             setAlertTriggered(true);
@@ -206,6 +297,8 @@ export const JourneyProvider = ({
     journey,
     currentPath,
     journeyHistory,
+    missedCheckpoints,
+    setMissedCheckpoints,
     startJourney,
     updatePosition,
     endJourney,

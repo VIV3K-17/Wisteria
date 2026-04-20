@@ -17,7 +17,8 @@
     "express": "^5.2.1",
     "mailtrap": "^4.5.1",
     "mongoose": "^9.4.1",
-    "nodemailer": "^7.0.13"
+    "nodemailer": "^7.0.13",
+    "twilio": "^5.13.1"
   },
   "type": "module"
 }
