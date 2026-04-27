@@ -75,9 +75,28 @@ const parseServiceErrorMessage = (rawText) => {
   }
 };
 
-const tryGetOsrmRoute = async (source, destination) => {
+const getOsrmProfile = (transportMode) => {
+  const profileMap = {
+    walk: 'foot',
+    bicycle: 'bike',
+    car: 'driving'
+  };
+  return profileMap[transportMode] || 'driving';
+};
+
+const getOrsProfile = (transportMode) => {
+  const profileMap = {
+    walk: 'foot-hiking',
+    bicycle: 'cycling-regular',
+    car: 'driving-car'
+  };
+  return profileMap[transportMode] || 'driving-car';
+};
+
+const tryGetOsrmRoute = async (source, destination, transportMode = 'car') => {
+  const profile = getOsrmProfile(transportMode);
   const coordinates = `${source.lng},${source.lat};${destination.lng},${destination.lat}`;
-  const url = `https://router.project-osrm.org/route/v1/driving/${coordinates}?alternatives=true&geometries=geojson&overview=full`;
+  const url = `https://router.project-osrm.org/route/v1/${profile}/${coordinates}?alternatives=true&geometries=geojson&overview=full`;
 
   try {
     const response = await fetch(url);
@@ -108,14 +127,15 @@ const tryGetOsrmRoute = async (source, destination) => {
   }
 };
 
-export const getRoute = async (source, destination) => {
+export const getRoute = async (source, destination, transportMode = 'car') => {
   if (!isConfiguredApiKey(ORS_API_KEY)) {
-    const osrmRoute = await tryGetOsrmRoute(source, destination);
+    const osrmRoute = await tryGetOsrmRoute(source, destination, transportMode);
     if (osrmRoute) return osrmRoute;
     return buildRouteFailure('Routing is not configured. Add a valid OpenRouteService API key.');
   }
 
-  const url = 'https://api.openrouteservice.org/v2/directions/driving-car/geojson';
+  const profile = getOrsProfile(transportMode);
+  const url = `https://api.openrouteservice.org/v2/directions/${profile}/geojson`;
 
   const payload = {
     coordinates: [
@@ -154,7 +174,7 @@ export const getRoute = async (source, destination) => {
     const routes = extractRoutesFromGeoJSON(data);
 
     if (!routes) {
-      const osrmRoute = await tryGetOsrmRoute(source, destination);
+      const osrmRoute = await tryGetOsrmRoute(source, destination, transportMode);
       if (osrmRoute) return osrmRoute;
       return buildRouteFailure('No drivable route found between these points.', 'NO_ROUTE_FOUND');
     }
@@ -163,11 +183,12 @@ export const getRoute = async (source, destination) => {
       success: true,
       primaryRoute: routes.primaryRoute,
       alternativeRoutes: routes.alternativeRoutes,
-      isReal: true
+      isReal: true,
+      transportMode
     };
   } catch (err) {
     console.warn('OpenRouteService API error:', err);
-    const osrmRoute = await tryGetOsrmRoute(source, destination);
+    const osrmRoute = await tryGetOsrmRoute(source, destination, transportMode);
     if (osrmRoute) return osrmRoute;
     return buildRouteFailure('Could not reach routing service. Check network/API key and try again.', 'NETWORK_ERROR');
   }

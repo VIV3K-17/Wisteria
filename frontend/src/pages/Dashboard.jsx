@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, Navigation, Shield, Users, LogOut, MapPin, Loader2, Play } from 'lucide-react';
+import { Search, Navigation, Users, LogOut, MapPin, Loader2, Play } from 'lucide-react';
+import { IoFootstepsSharp } from 'react-icons/io5';
+import { MdOutlineDirectionsBike } from 'react-icons/md';
+import { FaCar } from 'react-icons/fa';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -93,6 +96,7 @@ const Dashboard = () => {
   const [isFetchingRoute, setIsFetchingRoute] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
+  const [transportMode, setTransportMode] = useState('car');
 
   const filteredDests = DESTINATIONS.filter(d => d.name.toLowerCase().includes(searchQuery.toLowerCase()));
   const parsedLatLngDest = parseLatLngQuery(searchQuery);
@@ -174,8 +178,8 @@ const Dashboard = () => {
     await fetchRoute(customDest);
   };
 
-  // Fetch route from OpenRouteService
-  const fetchRoute = async (destination) => {
+  // Fetch route with selected transport mode
+  const fetchRoute = async (destination, mode = transportMode) => {
     if (!userPos) return;
     
     setIsFetchingRoute(true);
@@ -183,7 +187,7 @@ const Dashboard = () => {
     setRouteData(null);
     
     try {
-      const route = await getRoute(userPos, destination);
+      const route = await getRoute(userPos, destination, mode);
 
       if (!route?.success || !route?.primaryRoute?.geometry) {
         toast({
@@ -205,6 +209,14 @@ const Dashboard = () => {
       });
     } finally {
       setIsFetchingRoute(false);
+    }
+  };
+
+  // Refetch route when transport mode changes
+  const handleTransportModeChange = (mode) => {
+    setTransportMode(mode);
+    if (selectedDest && userPos) {
+      fetchRoute(selectedDest, mode);
     }
   };
 
@@ -232,13 +244,13 @@ const Dashboard = () => {
 
     if (!userPos || !selectedDest) return;
     
-    await startJourney({ ...userPos, name: 'Current Location' }, selectedDest, routeData, user?._id);
+    await startJourney({ ...userPos, name: 'Current Location' }, selectedDest, routeData, user?._id, transportMode);
     setIsPreviewMode(false);
     setRouteData(null);
     setSelectedDest(null);
     setSearchQuery('');
     toast({ title: '🚀 Journey Started!', description: `Heading to ${selectedDest.name}` });
-  }, [userPos, selectedDest, startJourney, toast, user, navigate, routeData]);
+  }, [userPos, selectedDest, startJourney, toast, user, navigate, routeData, transportMode]);
 
   const handleCancelPreview = () => {
     setIsPreviewMode(false);
@@ -274,22 +286,22 @@ const Dashboard = () => {
       />
 
       <div className="min-h-screen pb-6">
-        <motion.header initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="sticky top-0 z-30 bg-card/80 backdrop-blur-lg border-b border-border/50 px-4 py-3 md:px-6">
+        <motion.header initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="sticky top-0 z-30 bg-card/85 backdrop-blur-lg border-b border-border/50 px-4 py-4 md:px-6 md:py-5">
           <div className="mx-auto flex w-full max-w-6xl items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 gradient-primary rounded-lg flex items-center justify-center">
-                <Shield className="w-4 h-4 text-primary-foreground" />
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center">
+                <img src="/assets/wisteria-header-icon.png" alt="Wisteria" className="w-10 h-10 object-contain" />
               </div>
               <div>
-                <h1 className="text-sm font-bold text-foreground">SafeTravel</h1>
-                <p className="text-xs text-muted-foreground">{user.fullName}</p>
+                <h1 className="text-xl md:text-2xl font-extrabold text-foreground leading-none brand-heading">Wisteria</h1>
+                <p className="text-sm text-muted-foreground mt-1">{user.fullName}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setShowContacts(true)} className="rounded-xl text-primary h-8">
+              <Button variant="ghost" size="sm" onClick={() => setShowContacts(true)} className="rounded-xl text-primary h-9 w-9">
                 <Users className="w-4 h-4" />
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => setLogoutDialogOpen(true)} className="rounded-xl text-muted-foreground h-8">
+              <Button variant="ghost" size="sm" onClick={() => setLogoutDialogOpen(true)} className="rounded-xl text-muted-foreground h-9 w-9">
                 <LogOut className="w-4 h-4" />
               </Button>
             </div>
@@ -368,6 +380,46 @@ const Dashboard = () => {
                             )}
                           </div>
                         )}
+
+                        {/* Transport Mode Selector - Always Visible */}
+                        <div className="mt-3">
+                          <Label className="text-xs text-muted-foreground mb-2 block">Travel by</Label>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleTransportModeChange('walk')}
+                              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg transition-all border ${
+                                transportMode === 'walk'
+                                  ? 'bg-blue-600/20 border-blue-500 text-blue-400'
+                                  : 'bg-white/5 border-border hover:bg-white/10'
+                              }`}
+                            >
+                              <IoFootstepsSharp className="w-4 h-4" />
+                              <span className="text-xs font-medium">Walk</span>
+                            </button>
+                            <button
+                              onClick={() => handleTransportModeChange('bicycle')}
+                              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg transition-all border ${
+                                transportMode === 'bicycle'
+                                  ? 'bg-green-600/20 border-green-500 text-green-400'
+                                  : 'bg-white/5 border-border hover:bg-white/10'
+                              }`}
+                            >
+                              <MdOutlineDirectionsBike className="w-4 h-4" />
+                              <span className="text-xs font-medium">Cycle</span>
+                            </button>
+                            <button
+                              onClick={() => handleTransportModeChange('car')}
+                              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg transition-all border ${
+                                transportMode === 'car'
+                                  ? 'bg-amber-600/20 border-amber-500 text-amber-400'
+                                  : 'bg-white/5 border-border hover:bg-white/10'
+                              }`}
+                            >
+                              <FaCar className="w-4 h-4" />
+                              <span className="text-xs font-medium">Drive</span>
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     )}
 
@@ -404,6 +456,7 @@ const Dashboard = () => {
                     className="h-full"
                     isPreviewMode={isPreviewMode}
                     routeData={routeData}
+                    transportMode={transportMode}
                     onDestinationSelect={handleMapClick}
                   />
                 </div>
@@ -436,7 +489,7 @@ const Dashboard = () => {
       <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Logout from SafeTravel?</AlertDialogTitle>
+            <AlertDialogTitle>Logout from Wisteria?</AlertDialogTitle>
             <AlertDialogDescription>
               You will be signed out and sent back to the login screen.
             </AlertDialogDescription>

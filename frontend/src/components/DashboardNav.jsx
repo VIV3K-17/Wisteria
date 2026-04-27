@@ -32,7 +32,7 @@ const DashboardNav = ({ activeView, onChangeView, open, onOpenChange, userName }
           <div className="flex h-full flex-col bg-card">
             <SheetHeader className="border-b border-border/60 px-6 py-6 text-left">
               <div>
-                <SheetTitle className="text-xl font-bold text-foreground">SafeTravel</SheetTitle>
+                <SheetTitle className="text-xl font-bold text-foreground">Wisteria</SheetTitle>
                 <SheetDescription className="mt-1 text-sm text-muted-foreground">
                   Dashboard navigation for {userName || 'your account'}
                 </SheetDescription>

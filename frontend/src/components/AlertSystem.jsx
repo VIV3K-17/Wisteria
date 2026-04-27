@@ -18,7 +18,22 @@ import { useToast } from '@/hooks/use-toast';
 import axios from 'axios';
 import { isCheckpointOverdue, shouldEscalateToLevelThree } from '@/lib/TrackingEngine';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000/api';
+const API_URL = (() => {
+  const prod = (import.meta.env.VITE_API_URL || "https://wisteria-6bcx.onrender.com/api").trim();
+  const local = (import.meta.env.VITE_LOCAL_API_URL || "http://127.0.0.1:5000/api").trim();
+
+  if (typeof window === "undefined") return prod;
+
+  const { hostname } = window.location;
+  const isLocalHost =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname.startsWith("192.168.") ||
+    hostname.startsWith("10.") ||
+    hostname.endsWith(".local");
+
+  return isLocalHost ? local : prod;
+})();
 
 const AlertSystem = ({ userPosition }) => {
   const { journey, confirmSafety, setMissedCheckpoints } = useJourney();

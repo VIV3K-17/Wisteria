@@ -11,32 +11,22 @@ const createAvatarIcon = (imageUrl, size = 40) => {
     <div style="
       width: ${size}px;
       height: ${size}px;
-      background: white;
-      border: 3px solid #30669B;
-      border-radius: 50%;
+      background: rgba(255,255,255,0.9);
+      border: 2px solid #30669B;
+      border-radius: 14px;
       display: flex;
       align-items: center;
       justify-content: center;
       box-shadow: 0 4px 12px rgba(0,0,0,0.3);
       overflow: hidden;
+      padding: 4px;
     ">
       <img src="${imageUrl}" alt="User" style="
         width: 100%;
         height: 100%;
-        object-fit: cover;
-        border-radius: 50%;
-      " onerror="this.style.display='none'" />
-      <div style="
-        width: 100%;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: linear-gradient(135deg, #30669B, #1e40af);
-        color: white;
-        font-weight: bold;
-        font-size: ${size * 0.5}px;
-      " id="fallback">👤</div>
+        object-fit: contain;
+        border-radius: 8px;
+      " />
     </div>
   `;
 

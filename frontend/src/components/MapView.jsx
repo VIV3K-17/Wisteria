@@ -78,7 +78,14 @@ function MapClickHandler({ onMapClick, canSelectDestination }) {
   return null;
 }
 
-const MapView = ({ userPosition, destination, className = '', isPreviewMode = false, routeData = null, onDestinationSelect = null, blackspots = [] }) => {
+const getTransportMarkerImage = (mode) => {
+  const modeKey = String(mode || 'car').toLowerCase();
+  if (modeKey === 'walk') return '/assets/walk.png';
+  if (modeKey === 'bicycle') return '/assets/motorcycle.png';
+  return '/assets/classicvehicle.png';
+};
+
+const MapView = ({ userPosition, destination, className = '', isPreviewMode = false, routeData = null, transportMode = 'car', onDestinationSelect = null, blackspots = [] }) => {
   const { journey, currentPath } = useJourney();
   const defaultCenter = [19.0760, 72.8777]; // Mumbai
   const center = userPosition ? [userPosition.lat, userPosition.lng] : defaultCenter;
@@ -98,6 +105,9 @@ const MapView = ({ userPosition, destination, className = '', isPreviewMode = fa
     return geometry.coordinates.map(coord => [coord[1], coord[0]]); // [lng, lat] -> [lat, lng]
   };
 
+  const activeTransportMode = journey?.transportMode || routeData?.transportMode || transportMode || 'car';
+  const markerImage = getTransportMarkerImage(activeTransportMode);
+
   return (
     <div className={`relative isolate h-full w-full rounded-2xl overflow-hidden soft-shadow ${className} border border-border/50`}>
       <MapContainer center={center} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false}>
@@ -114,10 +124,10 @@ const MapView = ({ userPosition, destination, className = '', isPreviewMode = fa
         {userPosition && (
           <>
             <RecenterMap position={[userPosition.lat, userPosition.lng]} />
-            {journey?.active ? (
+            {journey?.active || isPreviewMode ? (
               <AvatarMarker
                 position={[userPosition.lat, userPosition.lng]}
-                imageUrl="/assets/car-avatar.svg"
+                imageUrl={markerImage}
                 userName="You"
                 animated
               />

@@ -50,7 +50,7 @@ const Index = () => {
       }} transition={{
         delay: 0.3
       }} className="text-3xl font-extrabold text-foreground mb-2">
-          SafeTravel
+          Wisteria
         </motion.h1>
         <motion.p initial={{
         opacity: 0,

@@ -122,7 +122,7 @@ const Signup = () => {
             {step === 1 ? 'Create Account' : 'Verify Identity'}
           </h1>
           <p className="text-muted-foreground mt-1">
-            {step === 1 ? 'Join SafeTravel today' : 'Enter OTP sent to your email'}
+            {step === 1 ? 'Join Wisteria today' : 'Enter OTP sent to your email'}
           </p>
         </div>
 

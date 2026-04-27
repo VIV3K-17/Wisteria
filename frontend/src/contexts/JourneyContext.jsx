@@ -5,7 +5,22 @@ import { lineString } from '@turf/helpers';
 
 const JourneyContext = createContext(null);
 const JOURNEY_HISTORY_KEY = 'safety_journey_history';
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000/api';
+const API_URL = (() => {
+  const prod = (import.meta.env.VITE_API_URL || "https://wisteria-6bcx.onrender.com/api").trim();
+  const local = (import.meta.env.VITE_LOCAL_API_URL || "http://127.0.0.1:5000/api").trim();
+
+  if (typeof window === "undefined") return prod;
+
+  const { hostname } = window.location;
+  const isLocalHost =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname.startsWith("192.168.") ||
+    hostname.startsWith("10.") ||
+    hostname.endsWith(".local");
+
+  return isLocalHost ? local : prod;
+})();
 
 export const useJourney = () => {
   const ctx = useContext(JourneyContext);
@@ -43,7 +58,7 @@ function getDistance(lat1, lon1, lat2, lon2) {
 }
 
 // Generate checkpoints using Turf.js along a route or linear path
-function generateCheckpoints(source, destination, routeGeometry = null, routeDurationSeconds = null) {
+function generateCheckpoints(source, destination, routeGeometry = null, routeDurationSeconds = null, transportMode = 'car') {
   const count = 3;
   const checkpoints = [];
 
@@ -102,10 +117,18 @@ function generateCheckpoints(source, destination, routeGeometry = null, routeDur
     }
   }
 
-  // Prefer route duration when available, else estimate from distance at ~40 km/h.
+  // Prefer route duration when available, else estimate from distance at mode-appropriate speeds.
+  // Mode speeds: walk ~5 km/h (1.39 m/s), bicycle ~20 km/h (5.56 m/s), car ~50 km/h (13.89 m/s)
+  const speedsMs = {
+    walk: 1.39,
+    bicycle: 5.56,
+    car: 13.89
+  };
+  const speed = speedsMs[transportMode] || speedsMs.car;
+  
   const durationFromRoute = Number(routeDurationSeconds);
   const hasRouteDuration = Number.isFinite(durationFromRoute) && durationFromRoute > 0;
-  const estimatedDuration = routeDistanceMeters > 0 ? routeDistanceMeters / 11.11 : 1800;
+  const estimatedDuration = routeDistanceMeters > 0 ? routeDistanceMeters / speed : 1800;
   const baseDuration = hasRouteDuration ? durationFromRoute : estimatedDuration;
 
   // Add a safety buffer so deadlines are realistic for traffic/pauses.
@@ -165,12 +188,13 @@ export const JourneyProvider = ({
     setJourneyHistory(prev => [historyEntry, ...prev].slice(0, 20));
   }, []);
 
-  const startJourney = useCallback(async (source, destination, routeData = null, userId = null) => {
+  const startJourney = useCallback(async (source, destination, routeData = null, userId = null, transportMode = 'car') => {
     const checkpoints = generateCheckpoints(
       source,
       destination,
       routeData?.primaryRoute?.geometry,
-      routeData?.primaryRoute?.duration
+      routeData?.primaryRoute?.duration,
+      transportMode
     );
     const now = Date.now();
 
@@ -183,6 +207,7 @@ export const JourneyProvider = ({
       id: crypto.randomUUID(),
       source,
       destination,
+      transportMode,
       checkpoints,
       startedAt: now,
       active: true,

@@ -42,7 +42,24 @@ const transporter = emailOtpConfigured
     })
   : null;
 
-app.use(cors());
+const allowedOrigins = (process.env.CORS_ORIGINS || [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  FRONTEND_URL
+].filter(Boolean).join(","))
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
 app.use(express.json());
 
 // MongoDB Schema
