@@ -1,3 +1,3 @@
-# Welcome to your Lovable project
+# Wisteria Frontend
 
-TODO: Document your project here
+React + Vite frontend for the Wisteria travel safety app.
