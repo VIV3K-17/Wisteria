@@ -42,15 +42,19 @@ const transporter = emailOtpConfigured
     })
   : null;
 
-const allowedOrigins = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean)
-  : [];
+const normalizeOrigin = (value = '') => value.trim().replace(/\/+$/, '').toLowerCase();
 
-app.use(cors({
-  origin: function (origin, callback) {
+const allowedOrigins = (process.env.CORS_ORIGINS || FRONTEND_URL || '')
+  .split(',')
+  .map(normalizeOrigin)
+  .filter(Boolean);
+
+const corsOptions = {
+  origin: (origin, callback) => {
     if (!origin) return callback(null, true);
 
-    if (allowedOrigins.includes(origin)) {
+    const incomingOrigin = normalizeOrigin(origin);
+    if (allowedOrigins.includes(incomingOrigin)) {
       return callback(null, true);
     }
 
@@ -58,7 +62,11 @@ app.use(cors({
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true
-}));
+};
+
+app.use(cors(corsOptions));
+// Use regex instead of '*' string to avoid path-to-regexp wildcard crash on newer router stack.
+app.options(/.*/, cors(corsOptions));
 
 app.use(express.json());
 
