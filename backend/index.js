@@ -58,19 +58,23 @@ const allowedOrigins = (process.env.CORS_ORIGINS || FRONTEND_URL || '')
 // Debug: print allowed origins on startup to help diagnose CORS issues in production
 console.log('CORS allowedOrigins:', allowedOrigins);
 
+const allowAllOrigins = allowedOrigins.includes('*');
+if (allowAllOrigins) console.log('CORS: wildcard "*" detected — allowing all origins');
+
 const corsOptions = {
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
+  origin: allowAllOrigins
+    ? true
+    : (origin, callback) => {
+        if (!origin) return callback(null, true);
 
-    const incomingOrigin = normalizeOrigin(origin);
-    // Allow all origins if '*' is present in the env, or if the incoming origin is explicitly allowed
-    if (allowedOrigins.includes('*') || allowedOrigins.includes(incomingOrigin)) {
-      return callback(null, true);
-    }
+        const incomingOrigin = normalizeOrigin(origin);
+        if (allowedOrigins.includes(incomingOrigin)) {
+          return callback(null, true);
+        }
 
-    console.error('Blocked by CORS:', origin);
-    return callback(new Error('Not allowed by CORS'));
-  },
+        console.error('Blocked by CORS:', origin);
+        return callback(new Error('Not allowed by CORS'));
+      },
   credentials: true
 };
 
