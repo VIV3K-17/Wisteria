@@ -1,13 +1,19 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import fs from 'fs/promises';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
 import twilio from 'twilio';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config({ override: true });
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -49,12 +55,16 @@ const allowedOrigins = (process.env.CORS_ORIGINS || FRONTEND_URL || '')
   .map(normalizeOrigin)
   .filter(Boolean);
 
+// Debug: print allowed origins on startup to help diagnose CORS issues in production
+console.log('CORS allowedOrigins:', allowedOrigins);
+
 const corsOptions = {
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
 
     const incomingOrigin = normalizeOrigin(origin);
-    if (allowedOrigins.includes(incomingOrigin)) {
+    // Allow all origins if '*' is present in the env, or if the incoming origin is explicitly allowed
+    if (allowedOrigins.includes('*') || allowedOrigins.includes(incomingOrigin)) {
       return callback(null, true);
     }
 
@@ -237,6 +247,41 @@ const sendSMS = async (phoneNumber, message) => {
     console.error(`Failed to send SMS: ${err.message}`);
   }
 };
+
+const loadGeoJsonFile = async (fileName) => {
+  try {
+    const filePath = path.join(__dirname, fileName);
+    const raw = await fs.readFile(filePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (parsed?.type === 'FeatureCollection' && Array.isArray(parsed.features)) {
+      return parsed.features;
+    }
+    return [];
+  } catch (err) {
+    console.warn(`[GeoJSON] Skipping ${fileName}: ${err.message}`);
+    return [];
+  }
+};
+
+const loadBlackspotFeatures = async () => {
+  const files = ['blackspots1.geojson', 'blackspots2.geojson'];
+  const featureGroups = await Promise.all(files.map((file) => loadGeoJsonFile(file)));
+  return featureGroups.flat();
+};
+
+const blackspotFeaturesPromise = loadBlackspotFeatures();
+
+app.get('/api/blackspots', async (req, res) => {
+  try {
+    const features = await blackspotFeaturesPromise;
+    res.json({
+      type: 'FeatureCollection',
+      features
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI)

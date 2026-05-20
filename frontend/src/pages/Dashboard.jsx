@@ -32,6 +32,8 @@ import JourneyHistoryPanel from '@/components/JourneyHistoryPanel';
 import EmergencyPanel from '@/components/EmergencyPanel';
 import { getRoute, searchLocations } from '@/lib/mapbox';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000/api';
+
 const DESTINATIONS = [{
   name: 'Mumbai Central',
   lat: 19.0760,
@@ -97,6 +99,7 @@ const Dashboard = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [transportMode, setTransportMode] = useState('car');
+  const [blackspots, setBlackspots] = useState([]);
 
   const filteredDests = DESTINATIONS.filter(d => d.name.toLowerCase().includes(searchQuery.toLowerCase()));
   const parsedLatLngDest = parseLatLngQuery(searchQuery);
@@ -125,6 +128,37 @@ const Dashboard = () => {
     }
     return () => watchId && navigator.geolocation.clearWatch(watchId);
   }, [journey?.active, updatePosition, user?._id]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadBlackspots = async () => {
+      try {
+        const response = await fetch(`${API_URL}/blackspots`);
+        if (!response.ok) {
+          throw new Error(`Failed to load blackspots: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const features = Array.isArray(data?.features) ? data.features : [];
+
+        if (isMounted) {
+          setBlackspots(features);
+        }
+      } catch (err) {
+        console.warn('Could not load blackspots data:', err);
+        if (isMounted) {
+          setBlackspots([]);
+        }
+      }
+    };
+
+    loadBlackspots();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     const query = String(searchQuery || '').trim();
@@ -458,6 +492,7 @@ const Dashboard = () => {
                     routeData={routeData}
                     transportMode={transportMode}
                     onDestinationSelect={handleMapClick}
+                    blackspots={blackspots}
                   />
                 </div>
               </div>

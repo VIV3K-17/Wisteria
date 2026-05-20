@@ -1,86 +1,104 @@
-import React from 'react';
-import { GeoJSON } from 'react-leaflet';
+import { useEffect } from 'react';
+import L from 'leaflet';
+import { useMap } from 'react-leaflet';
 
 const BlackspotsOverlay = ({ blackspots = [] }) => {
-  if (!blackspots || blackspots.length === 0) {
-    return null;
-  }
+  const map = useMap();
 
-  // Create a GeoJSON FeatureCollection from blackspot points
-  const geoJsonData = {
-    type: 'FeatureCollection',
-    features: blackspots.map((spot, idx) => ({
-      type: 'Feature',
-      id: spot.id || idx,
-      geometry: {
-        type: 'Point',
-        coordinates: [spot.lng || spot.coordinates[0], spot.lat || spot.coordinates[1]]
-      },
-      properties: {
-        severity: spot.severity || 'medium', // low, medium, high
-        title: spot.title || 'Danger Zone',
-        description: spot.description || '',
-        radius: spot.radius || 100 // meters
-      }
-    }))
-  };
+  useEffect(() => {
+    const normalizedBlackspots = Array.isArray(blackspots)
+      ? blackspots
+      : Array.isArray(blackspots?.features)
+        ? blackspots.features
+        : [];
 
-  const onEachFeature = (feature, layer) => {
-    const { severity, title, description } = feature.properties;
-    const severityColor = {
+    if (!normalizedBlackspots.length) {
+      return undefined;
+    }
+
+    const layerGroup = L.layerGroup().addTo(map);
+
+    const getSeverityColor = (severity) => ({
       high: '#ef4444',
       medium: '#f59e0b',
       low: '#eab308'
-    }[severity] || '#f59e0b';
+    }[severity] || '#f59e0b');
 
-    layer.bindPopup(`
-      <div style="padding: 8px; font-size: 12px;">
-        <strong style="color: ${severityColor}; font-size: 14px;">⚠️ ${title}</strong>
-        ${description ? `<p style="margin: 4px 0 0 0;">${description}</p>` : ''}
-        <p style="margin: 4px 0 0 0; color: #666; font-size: 11px;">Severity: ${severity}</p>
-      </div>
-    `);
+    const accidentIcon = (severity) => {
+      const severityColor = getSeverityColor(severity);
 
-    // Add a circle around the point to show danger radius
-    const circleOptions = {
-      color: severityColor,
-      weight: 2,
-      opacity: 0.6,
-      fillColor: severityColor,
-      fillOpacity: 0.1,
-      radius: feature.properties.radius
+      return L.divIcon({
+        className: '',
+        html: `
+          <div style="
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: ${severityColor};
+            border: 3px solid white;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 18px;
+            line-height: 1;
+          ">🚨</div>
+        `,
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+        popupAnchor: [0, -14]
+      });
     };
 
-    if (window.L) {
-      window.L.circle([feature.geometry.coordinates[1], feature.geometry.coordinates[0]], circleOptions).addTo(layer._map || layer);
-    }
-  };
+    normalizedBlackspots.forEach((spot) => {
+      const geometry = spot.geometry || {};
+      const coordinates = geometry.coordinates || [spot.lng || spot.coordinates?.[0], spot.lat || spot.coordinates?.[1]];
+      const lng = coordinates?.[0];
+      const lat = coordinates?.[1];
 
-  const pointToLayer = (feature, latlng) => {
-    const { severity } = feature.properties;
-    const severityColor = {
-      high: '#ef4444',
-      medium: '#f59e0b',
-      low: '#eab308'
-    }[severity] || '#f59e0b';
+      if (typeof lat !== 'number' || typeof lng !== 'number') {
+        return;
+      }
 
-    return window.L?.circleMarker(latlng, {
-      radius: 6,
-      fillColor: severityColor,
-      color: '#fff',
-      weight: 2,
-      opacity: 0.8,
-      fillOpacity: 0.8
+      const properties = spot.properties || spot;
+      const severity = properties.severity || 'medium';
+      const title = properties.title || 'Accident Spot';
+      const description = properties.description || '';
+      const radius = properties.radius || 100;
+      const severityColor = getSeverityColor(severity);
+
+      const marker = L.marker([lat, lng], {
+        icon: accidentIcon(severity)
+      });
+
+      marker.bindPopup(`
+        <div style="padding: 8px; font-size: 12px;">
+          <strong style="color: ${severityColor}; font-size: 14px;">🚨 ${title}</strong>
+          ${description ? `<p style="margin: 4px 0 0 0;">${description}</p>` : ''}
+          <p style="margin: 4px 0 0 0; color: #666; font-size: 11px;">Severity: ${severity}</p>
+        </div>
+      `);
+
+      const circle = L.circle([lat, lng], {
+        color: severityColor,
+        weight: 2,
+        opacity: 0.6,
+        fillColor: severityColor,
+        fillOpacity: 0.1,
+        radius
+      });
+
+      marker.addTo(layerGroup);
+      circle.addTo(layerGroup);
     });
-  };
 
-  return (
-    <GeoJSON
-      data={geoJsonData}
-      onEachFeature={onEachFeature}
-      pointToLayer={pointToLayer}
-    />
-  );
+    return () => {
+      layerGroup.remove();
+    };
+  }, [blackspots, map]);
+
+  return null;
 };
 
 export default BlackspotsOverlay;
