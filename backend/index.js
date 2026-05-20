@@ -10,7 +10,14 @@ import twilio from 'twilio';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-dotenv.config({ override: true });
+// Load environment variables. In production we avoid overriding existing
+// platform-provided env vars (e.g., Render) so they aren't replaced by
+// a checked-in .env file.
+if (process.env.NODE_ENV === 'production') {
+  dotenv.config();
+} else {
+  dotenv.config({ override: true });
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
